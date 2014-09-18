@@ -1,9 +1,8 @@
-/******************************************************************************
- *  @file list.h
- *  @description Templatized Linked List
- *  @author Lance Cho
- *****************************************************************************
- */
+/****************************************************************************
+ *  @file list.h                                                            *
+ *  @description Templatized Linked List                                    *
+ *  @author Lance Cho                                                       *
+ ****************************************************************************/
 
 #ifndef LIST_H
 #define LIST_H
@@ -12,7 +11,6 @@
 #include <iostream>
 #include <fstream>
 using namespace std;
-
 
 template <typename T>
 class List {
@@ -25,7 +23,9 @@ class List {
     friend ostream& operator<<(ostream& output, const List<T>& printlist) {
         Node* current = printlist.head;
         while (current != NULL){
-            output << current->data;
+            if(current->data.getTicker() != ""){
+                output << current->data;
+            }
             current = current->next;
         }//end while
         current = NULL;
@@ -38,15 +38,17 @@ class List {
  *  @param list - search userinput from this linked list
  */
     friend istream& operator>>(istream& input, List<T>& list) {
-        string tick;
+        string tick;    // temp container for the data gathered
         input >> tick;
         list.retrieve(tick);
         
+        // Won't stop asking for user input until user types in [!quit]
         for(;;){
             if (tick == "!quit")
                 break;
             
-            cout << "\nEnter a ticker ([!quit] to quit): " << endl;
+            cout << "\nPlease use capital letters only." << endl;
+            cout << "Enter a ticker ([!quit] to quit): " << endl;
             input >> tick;
             list.retrieve(tick);
         }
@@ -59,13 +61,16 @@ public:
     List();                              //default constructor
     ~List();                             //destructor
     void buildList(ifstream&, List<T>&); //build list from data file
+    void buildNewList (ofstream&, List<T>&); //build edited csv file
     bool insert(T*);                     //insert data in the list
     void retrieve(const string);
     bool isEmpty() const;                //check if list is empty
     void makeEmpty();                    //deallocate memory
-    void printADRavg();
-    void printCommonavg();
-    void removeADR();
+    void mainOperationsHelper(ifstream&, ofstream&); //helper method
+    void doOperationsHelper();           //perform prints and removes
+    void printADRavg();                  //prints the avg of all ADR stocks
+    void printCommonavg();               //prints the avg of all Common stocks
+    void removeADR();                    //removes all the ADR stocks
 //---------------------Private---------------------------------------------
 private:
     struct Node {          // node in the linked list
@@ -75,8 +80,13 @@ private:
     
     Node* head;            // pointer to the first node
     int size;              // size of the linked list
-    
-};//end List
+};//end List Class
+
+
+
+/****************************************************************************
+ *                          Implementations                                 *
+ ****************************************************************************/
 
 /**-------------------------Constructor-----------------------------------
  *  @brief default constructor
@@ -86,7 +96,6 @@ List<T>::List(){
     head = NULL;
     size = 0;
 }//end List
-
 
 /**--------------------------Destructor-----------------------------------
  *  @brief destructor
@@ -98,8 +107,8 @@ List<T>::~List(){
 
 /**---------------------------buildList-----------------------------------
  *  @brief build list from data file
- *  @param infile file passed into the builder mehtod
- *  @param list linked list to be used after reading the file
+ *  @param infile - data in this file will be stored in the linked list
+ *  @param list - linked list to be used after reading the file
  */
 template <typename T>
 void List<T>::buildList(ifstream& infile, List<T>& list){
@@ -112,8 +121,8 @@ void List<T>::buildList(ifstream& infile, List<T>& list){
     getline (infile, data, ' ' );
     getline (infile, data, ' ' );
     getline (infile, data, '\n' );
-    while (!infile.eof() )
-    {
+    
+    while (!infile.eof()) {     // still have data to read
         // Getting the stock information
         getline (infile, data, ' ' );   // ignore whitespace
         getline (infile, data, ',' );
@@ -123,7 +132,7 @@ void List<T>::buildList(ifstream& infile, List<T>& list){
         getline (infile, data, ',' );
         stockptr->setType(data);
         
-        getline (infile, data, ' ' );   // ignore whitespace or $ sign
+        getline (infile, data, ' ' );   // ignore whitespace and/or $ sign
         getline (infile, data, '$' );
         getline (infile, data, ' ' );
         stockptr->setPrice(data);
@@ -133,8 +142,38 @@ void List<T>::buildList(ifstream& infile, List<T>& list){
         // insert stock into linked list
         this->insert(stockptr);
     }
-    
+    infile.close();
 }// end buildList
+
+/**---------------------------buildNewList--------------------------------
+ *  @brief build new stock list by creating a new csv file
+ *  @param outfile - file to be populated with data
+ *  @param list - data of this linked list will be used to populate the file
+ */
+template <typename T>
+void List<T>::buildNewList(ofstream& outfile, List<T>& list){
+    // print out the headers
+    outfile << " Ticker ,SecurityType , Price\n";
+    
+    Node* current = head;
+    while(current != NULL) {
+        if(current->data.getTicker() != "") {
+            // output necessary data into the newly created csv file
+            outfile << ' ';
+            outfile << current->data.getTicker();
+            outfile << ',';
+            outfile << ' ';
+            outfile << current->data.getType();
+            outfile << ',';
+            outfile << ' ';
+            outfile << '$';
+            outfile << current->data.getPrice();
+            outfile << '\n';
+        }
+        current = current->next;    // move pointer to next node
+    }
+    outfile.close();    // close the file
+}// end buildNewList
 
 /**---------------------insert--------------------------------------------
  *  @brief insert
@@ -145,7 +184,7 @@ void List<T>::buildList(ifstream& infile, List<T>& list){
 template <typename T>
 bool List<T>::insert(T* dataPtr){
     
-    Node* ptr = new Node;
+    Node* ptr = new Node;    //create a new placeholder (node)
     if (ptr == NULL){
         return false;
     }
@@ -180,7 +219,6 @@ bool List<T>::insert(T* dataPtr){
     return true;
 }//end insert
 
-
 /**----------------------------retrieve-----------------------------------
  *  @brief retrieve
  *  @description retrieve the price of the ticker provided
@@ -188,18 +226,17 @@ bool List<T>::insert(T* dataPtr){
  */
 template <typename T>
 void List<T>::retrieve(const string input) {
-    Node* current = this->head;
+    Node* current = this->head; // point to the head of the linked list
     while (current != NULL){
         if (input == current->data.getTicker() ||
             (input + " ") == current->data.getTicker()){
+            // print out the stock ticker info and price
             cout << "Stock: "<< input << "  Price: $" <<
                 current->data.getPrice() << endl;
         }
-        current = current->next;
+        current = current->next;    // move pointer to the next node
     }
-
-}
-
+}//end retrieve
 
 /**-----------------------isEmpty------------------------------------------
  *  @brief isEmpty
@@ -219,31 +256,64 @@ bool List<T>::isEmpty() const
  */
 template <typename T>
 void List<T>::makeEmpty(){
-
-    if (head == NULL)
+    if (head == NULL)   //linked list is empty
         return;
     
     Node* current;
     Node* temp = head;
     
-    
-    while (temp != NULL)
-    {
+    while (temp != NULL) {
         current = temp->next;
-        delete temp;
+        delete temp;    //deallocate memory
         head = head->next;
         temp->next = NULL;
 
         temp = current;
-        size--;
+        size--;         //decrease linked list size
     }//end while
     size = 0;
     head = NULL;        //set the head as empty
 }//end makeEmpty
 
+/**-------------------------mainOperationsHelper---------------------------
+ *  @brief mainOperationsHelper
+ *  @description Helper method to hide all the main 
+ *                  operations done from the user
+ */
+template <typename T>
+void List<T>::mainOperationsHelper(ifstream& input, ofstream& output){
+        // build linked list using *filename* and *linkedlist_name*
+        this->buildList(input, *this);
+
+        // perform averages of Common Stock and ADR, and removal of ADR stocks
+        this->doOperationsHelper();
+
+        // build the new csv file using *filename* and *linkedlist_name*
+        this->buildNewList(output, *this);
+
+        // Friendly greeting to the users
+        cout << "\nCreated an updated list in csv format." << endl;
+        cout << "Have a nice day!" << endl;
+}//end mainOperationsHelper
+
+/**-------------------------doOperationsHelper----------------------------
+ *  @brief doOperationsHelper
+ *  @description Helper method to hide all the operations from the user
+ */
+template <typename T>
+void List<T>::doOperationsHelper(){
+    this->printCommonavg();     //print the avg of Common Stock stocks
+    this->printADRavg();        //print the avg of ADR stocks
+    this->removeADR();          //remove all the ADR stocks from the list
+    
+    //(fencepost) ask for user input
+    cout << "\nPlease use capital letters only." << endl;
+    cout << "Enter a ticker ([!quit] to quit): " << endl;
+    cin >> *this;
+}//end doOperationsHelper
 
 /**-------------------------printCommonavg--------------------------------
- *  @brief makeEmpty
+ *  @brief printCommonavg
  *  @description prints out the average price of all type Common Stock stocks
  */
 template <typename T>
@@ -254,16 +324,15 @@ void List<T>::printCommonavg(){
     while (current != NULL){
         if(current->data.getType() == "Common Stock" ||
            current->data.getType() == "Common Stock "){
+            //found the correct Common Stock ticker, add the price
             sum = sum + current->data.getPrice();
             counter++;
         }
-        current = current->next;
+        current = current->next;    //check next node
     }
-    
-    avg = sum/counter;
+    avg = sum/counter;              //compute for the average value
     cout << "Common Stock Average: " << avg << endl;
-}
-
+}//end printCommonavg
 
 /**-------------------------printADRavg-----------------------------------
  *  @brief printADRavg
@@ -277,19 +346,19 @@ void List<T>::printADRavg(){
     while (current != NULL){
         if(current->data.getType() == "ADR" ||
            current->data.getType() == "ADR "){
+            //found the correct stock type, add the price to the sum
             sum = sum + current->data.getPrice();
             counter++;
         }
-        current = current->next;
+        current = current->next;    //move to the next node
     }
-    
-    avg = sum/counter;
+    avg = sum/counter;              //compute for the avg
+    //print the average value
     cout << "ADR Average: " << avg << endl;
-}
-
+}//end printADRavg
 
 /**-------------------------removeADR-------------------------------------
- *  @brief makeEmpty
+ *  @brief removeADR
  *  @description removes all type ADR stocks in the linked list
  */
 template <typename T>
@@ -308,17 +377,20 @@ void List<T>::removeADR(){
         while (current != NULL){
             if(current->data.getType() == "ADR" ||
                current->data.getType() == "ADR "){
+                // found an ADR type stock, remove it from the list
                 temp = current;
                 current = current->next;
                 previous->next = current;
-                delete temp;
+                delete temp;    //delete the stock from the list
+                size--;         //decrease linked list size after removal
             } else {
+                //move to the next node
                 current = current->next;
                 previous = previous->next;
-            }
-        }
-    }
-}
+            }//end inner if/else statement
+        }//end while loop
+    }//end outer if/else statement
+}//end removeADR
 
 
 #endif
