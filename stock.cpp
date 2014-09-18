@@ -1,9 +1,8 @@
-/******************************************************************************
- *  @file stock.cpp
- *  @description Implementation file for the Stock Class
- *  @author Lance Cho
- *****************************************************************************
- */
+/****************************************************************************
+ *  @file stock.cpp                                                         *
+ *  @description Implementation file for the Stock Class                    *
+ *  @author Lance Cho                                                       *
+ ****************************************************************************/
 
 #include "stock.h"
 
